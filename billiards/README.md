@@ -1,3 +1,8 @@
+# Billiards 🎱
+
+Differetiable pool physics using 🌹.
+
+![Alt text](assets/image.png)
 ## Usage
 
 ```bash
