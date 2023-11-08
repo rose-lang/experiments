@@ -40,12 +40,23 @@ const loss: number[] = [];
 const [dt, setdt] = createSignal(0.003);
 
 // all the balls
+// const alpha = -Math.PI / 70;
 const alpha = 0;
 let x: number[][] = createMutable([]);
 let v: number[][] = createMutable([]);
 
 // vector helpers
 const Vec2 = Vec(2, Real);
+
+const pow = (x: Real, n: number): Real => {
+  if (!Number.isInteger(n)) throw new Error(`exponent is not an integer: ${n}`);
+  // https://en.wikipedia.org/wiki/Exponentiation_by_squaring
+  if (n < 0) return pow(div(1, x), -n);
+  else if (n == 0) return 1;
+  else if (n == 1) return x;
+  else if (n % 2 == 0) return pow(mul(x, x), n / 2);
+  else return mul(x, pow(mul(x, x), (n - 1) / 2));
+};
 
 const vadd2 = fn([Vec2, Vec2], Vec2, (v1, v2) =>
   vec(2, Real, (i) => add(v1[i], v2[i]))
@@ -162,6 +173,12 @@ const init = () => {
   }
 };
 
+const computeLoss = fn([Vec2, Vec2], Real, (current, goal) =>
+  add(pow(sub(current[0], goal[0]), 2), pow(sub(current[1], goal[1]), 2))
+);
+
+const optimize = () => {};
+
 export default function Table() {
   const [w, h] = [1024, 1024];
   const pixelRadius = Math.round(radius * 1024) + 1;
@@ -219,6 +236,7 @@ export default function Table() {
           name="Time step"
         />
       </div>
+      <div>Loss: {interp(computeLoss)(x[targetBall], goal)}</div>
     </>
   );
 }
