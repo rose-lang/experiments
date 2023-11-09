@@ -14,6 +14,7 @@ import {
   sqrt,
   sub,
   vec,
+  vjp,
 } from "rose";
 import { createEffect, createSignal } from "solid-js";
 import { createMutable, createStore } from "solid-js/store";
@@ -191,9 +192,29 @@ const computeLoss = fn([Vec2, Vec2], Real, (current, goal) =>
   add(pow(sub(current[0], goal[0]), 2), pow(sub(current[1], goal[1]), 2))
 );
 
+const F = fn([{ x: Rack, v: Rack }], Real, ({ x, v }) => {
+  const xs = allSteps(x, v);
+  return computeLoss(xs[steps - 1][targetBall], goal);
+});
+
+const gradF = fn(
+  [{ x: Rack, v: Rack }],
+  { gradX: Vec2, gradV: Vec2, loss: Real },
+  ({ x, v }) => {
+    const f = vjp(F)({ x, v });
+    const g = f.grad(1);
+    return {
+      loss: f.ret,
+      gradX: g.x[0],
+      gradV: g.v[0],
+    };
+  }
+);
+
 const optimize = () => {};
 
 const stepsCompiled = await compile(allSteps);
+const gradCompiled = await compile(gradF);
 // const stepsCompiled = interp(allSteps);
 
 export default function Table() {
@@ -207,6 +228,7 @@ export default function Table() {
 
   init();
   const xs = stepsCompiled(x, v);
+  const { loss } = gradCompiled({ x, v });
 
   createEffect(() => {
     setX([...(xs[currentT()] as any)]);
@@ -260,7 +282,9 @@ export default function Table() {
           name="Time step"
         />
       </div>
-      <div>Loss: {interp(computeLoss)(x[targetBall], goal)}</div>
+      {/* <div>Loss: {interp(computeLoss)(x[targetBall], goal)}</div> */}
+      {/* <div>Loss: {loss}</div> */}
+      {/* <div>Grad: {interp(computeLoss)(x[targetBall], goal)}</div> */}
     </>
   );
 }
