@@ -44,8 +44,6 @@ const [dt, setdt] = createSignal(0.003);
 // all the balls
 // const alpha = -Math.PI / 70;
 const alpha = 0;
-let [x, setX] = createStore<number[][]>([]);
-let v: number[][] = [];
 
 // vector helpers
 const Vec2 = Vec(2, Real);
@@ -168,24 +166,31 @@ const allSteps = fn([Rack, Rack], Vec(steps, Rack), (init_x, init_v) => {
   return xs;
 });
 
-const init = () => {
-  // initialize cue ball position
-  const init_x = [];
-  init_x[0] = [0.1, 0.5];
-  v[0] = [0.3 * Math.cos(alpha), 0.3 * Math.sin(alpha)];
+const init = (): {
+  initX: number[][];
+  initV: number[][];
+} => {
+  // initialize cue ball position and speed
+  const initX = [];
+  initX[0] = [0.1, 0.5];
+  const initV = [];
+  initV[0] = [0.3 * Math.cos(alpha), 0.3 * Math.sin(alpha)];
   // initialize other balls
   let count = 0;
   for (let i = 0; i < layers; i++) {
     for (let j = 0; j < i + 1; j++) {
       count += 1;
-      init_x[count] = [
+      initX[count] = [
         i * 2 * radius + 0.5,
         j * 2 * radius + 0.5 - i * radius * 0.7,
       ];
-      v[count] = [0, 0];
+      initV[count] = [0, 0];
     }
   }
-  setX(init_x);
+  return {
+    initV,
+    initX,
+  };
 };
 
 const computeLoss = fn([Vec2, Vec2], Real, (current, goal) =>
@@ -221,14 +226,13 @@ export default function Table() {
   const [w, h] = [1024, 1024];
   const pixelRadius = Math.round(radius * 1024) + 1;
   const cloth = "#2bb4e5";
-  const [playID, setPlayID] = createSignal(0);
-  const [playing, setPlaying] = createSignal(false);
-  const fps = 60;
   const [currentT, setCurrentT] = createSignal(0);
 
-  init();
-  const xs = stepsCompiled(x, v);
-  const { loss } = gradCompiled({ x, v });
+  const { initV, initX } = init();
+  const xs = stepsCompiled(initX, initV);
+  const { loss, gradX, gradV } = gradCompiled({ x: initX, v: initV });
+
+  const [x, setX] = createStore<number[][]>(initX);
 
   createEffect(() => {
     setX([...(xs[currentT()] as any)]);
@@ -253,21 +257,6 @@ export default function Table() {
           fill="#000"
         ></circle>
       </svg>
-      {/* <button
-        onclick={() => {
-          if (playing()) {
-            clearInterval(playID());
-            setPlaying(false);
-            return;
-          } else {
-            setPlaying(true);
-            setPlayID(setInterval(() => step(), 1000 / fps));
-          }
-        }}
-      >
-        {playing() ? `Pause` : `Play`}
-      </button>
-      <button onclick={() => init()}>Reset</button> */}
       <div>
         T:
         <input
@@ -276,15 +265,12 @@ export default function Table() {
           max={steps - 1}
           step={1}
           value={currentT()}
-          // disabled={playing()}
-          // onchange={(v) => setdt(v.target.valueAsNumber)}
           oninput={(v) => setCurrentT(v.target.valueAsNumber)}
           name="Time step"
         />
       </div>
-      {/* <div>Loss: {interp(computeLoss)(x[targetBall], goal)}</div> */}
-      {/* <div>Loss: {loss}</div> */}
-      {/* <div>Grad: {interp(computeLoss)(x[targetBall], goal)}</div> */}
+      <div>Loss: {loss}</div>
+      <div>Grad: {gradX}</div>
     </>
   );
 }
