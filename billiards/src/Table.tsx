@@ -6,24 +6,31 @@ import {
   compile,
   div,
   fn,
-  interp,
   lt,
   mul,
-  opaque,
   select,
-  sqrt,
   sub,
-  vec,
   vjp,
 } from "rose";
 import { createEffect, createSignal } from "solid-js";
-import { createMutable, createStore } from "solid-js/store";
+import { createStore } from "solid-js/store";
+import {
+  Vec2,
+  dot,
+  min,
+  norm,
+  normalize,
+  pow,
+  vadd2,
+  vmul,
+  vsub2,
+} from "./lib";
 
 // constants
 const maxSteps = 2048;
 const visInterval = 64;
 const outputInterval = 16;
-const steps = 4096;
+const steps = 1024;
 
 const layers = 4;
 const ballCount = Math.round(1 + ((1 + layers) * layers) / 2);
@@ -44,49 +51,6 @@ const [dt, setdt] = createSignal(0.003);
 // all the balls
 // const alpha = -Math.PI / 70;
 const alpha = 0;
-
-// vector helpers
-const Vec2 = Vec(2, Real);
-
-const pow = (x: Real, n: number): Real => {
-  if (!Number.isInteger(n)) throw new Error(`exponent is not an integer: ${n}`);
-  // https://en.wikipedia.org/wiki/Exponentiation_by_squaring
-  if (n < 0) return pow(div(1, x), -n);
-  else if (n == 0) return 1;
-  else if (n == 1) return x;
-  else if (n % 2 == 0) return pow(mul(x, x), n / 2);
-  else return mul(x, pow(mul(x, x), (n - 1) / 2));
-};
-
-const vadd2 = fn([Vec2, Vec2], Vec2, (v1, v2) =>
-  vec(2, Real, (i) => add(v1[i], v2[i]))
-);
-const vsub2 = fn([Vec2, Vec2], Vec2, (v1, v2) =>
-  vec(2, Real, (i) => sub(v1[i], v2[i]))
-);
-
-const vmul = fn([Real, Vec2], Vec2, (a, v) =>
-  vec(2, Real, (i) => mul(a, v[i]))
-);
-
-const norm = fn([Vec2], Real, (v) =>
-  sqrt(add(mul(v[0], v[0]), mul(v[1], v[1])))
-);
-
-const dot = fn([Vec2, Vec2], Real, (v1, v2) =>
-  add(mul(v1[0], v2[0]), mul(v1[1], v2[1]))
-);
-
-const min = fn([Real, Real], Real, (a, b) => select(lt(a, b), Real, a, b));
-
-const normalize = fn([Vec2, Real], Vec2, (v, eps) =>
-  vmul(div(1, add(eps, norm(v))), v)
-);
-
-const print = opaque([Real], Real, (x) => {
-  console.log(x);
-  return x;
-});
 
 // ball collision
 
@@ -174,7 +138,7 @@ const init = (): {
   const initX = [];
   initX[0] = [0.1, 0.5];
   const initV = [];
-  initV[0] = [0.3 * Math.cos(alpha), 0.3 * Math.sin(alpha)];
+  initV[0] = [0.3, 0.0];
   // initialize other balls
   let count = 0;
   for (let i = 0; i < layers; i++) {
@@ -216,8 +180,30 @@ const gradF = fn(
   }
 );
 
-const optimize = () => {};
+const optimize = () => {
+  let optX = [0.1, 0.5];
+  let optV = [0.3, 0.0];
 
+  for (let i = 0; i < 200; i++) {
+    // initialize the board
+    const { initX, initV } = init();
+    // plug in the optimized initial values
+    initX[0] = [...optX];
+    initV[0] = [...optV];
+    const { gradX, gradV, loss } = gradCompiled({ x: initX, v: initV });
+    // update the optimized values by descenting the gradient
+    optX[0] = optX[0] - learningRate * gradX[0];
+    optX[1] = optX[1] - learningRate * gradX[1];
+    optV[0] = optV[0] - learningRate * gradV[0];
+    optV[1] = optV[1] - learningRate * gradV[1];
+    console.log(`iter=${i} loss: ${loss}`);
+    console.log(`iter=${i} grad X: ${gradX}`);
+    console.log(`iter=${i} grad V: ${gradV}`);
+  }
+  return { x: optX, v: optV };
+};
+
+const stepsAndLossCompiled = await compile(F);
 const stepsCompiled = await compile(allSteps);
 const gradCompiled = await compile(gradF);
 // const stepsCompiled = interp(allSteps);
@@ -229,14 +215,18 @@ export default function Table() {
   const [currentT, setCurrentT] = createSignal(0);
 
   const { initV, initX } = init();
-  const xs = stepsCompiled(initX, initV);
-  const { loss, gradX, gradV } = gradCompiled({ x: initX, v: initV });
 
   const [x, setX] = createStore<number[][]>(initX);
 
   createEffect(() => {
     setX([...(xs[currentT()] as any)]);
   });
+
+  const { x: optX, v: optV } = optimize();
+  initX[0] = optX as any;
+  initV[0] = optV as any;
+
+  const xs = stepsCompiled(initX, initV);
 
   return (
     <>
@@ -269,8 +259,6 @@ export default function Table() {
           name="Time step"
         />
       </div>
-      <div>Loss: {loss}</div>
-      <div>Grad: {gradX}</div>
     </>
   );
 }
