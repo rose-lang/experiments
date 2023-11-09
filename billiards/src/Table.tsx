@@ -3,6 +3,7 @@ import {
   Vec,
   add,
   and,
+  compile,
   div,
   fn,
   interp,
@@ -14,14 +15,14 @@ import {
   sub,
   vec,
 } from "rose";
-import { createSignal } from "solid-js";
-import { createMutable } from "solid-js/store";
+import { createEffect, createSignal } from "solid-js";
+import { createMutable, createStore } from "solid-js/store";
 
 // constants
 const maxSteps = 2048;
 const visInterval = 64;
 const outputInterval = 16;
-const steps = 1024;
+const steps = 4096;
 
 const layers = 4;
 const ballCount = Math.round(1 + ((1 + layers) * layers) / 2);
@@ -42,8 +43,8 @@ const [dt, setdt] = createSignal(0.003);
 // all the balls
 // const alpha = -Math.PI / 70;
 const alpha = 0;
-let x: number[][] = createMutable([]);
-let v: number[][] = createMutable([]);
+let [x, setX] = createStore<number[][]>([]);
+let v: number[][] = [];
 
 // vector helpers
 const Vec2 = Vec(2, Real);
@@ -117,60 +118,63 @@ const collidePair = fn(
   }
 );
 
-// main simulation step
-const step = () => {
-  // collide all pairs of balls
-  const x_inc: number[][] = [];
-  const impulse: number[][] = [];
-  for (let i = 0; i < ballCount; i++) {
-    x_inc.push([0, 0]);
-  }
-  for (let i = 0; i < ballCount; i++) {
-    impulse.push([0, 0]);
-  }
-  for (let i = 0; i < ballCount; i++) {
-    for (let j = 0; j < ballCount; j++) {
-      if (i === j) continue;
-      const { x_inc_contrib, imp } = interp(collidePair)(
-        x[i],
-        x[j],
-        v[i],
-        v[j]
-      );
-      x_inc[i] = [
-        x_inc[i][0] + x_inc_contrib[0],
-        x_inc[i][1] + x_inc_contrib[1],
-      ];
-      impulse[i] = [impulse[i][0] + imp[0], impulse[i][1] + imp[1]];
-    }
-  }
+const Rack = Vec(ballCount, Vec2);
 
-  // update ball positions
+// main simulation step
+const allSteps = fn([Rack, Rack], Vec(steps, Rack), (init_x, init_v) => {
+  const xs = [];
+  // copy over the initial values
+  const x: Vec<Real>[] = [];
+  const v: Vec<Real>[] = [];
   for (let i = 0; i < ballCount; i++) {
-    v[i] = [v[i][0] + impulse[i][0], v[i][1] + impulse[i][1]];
-    x[i] = [
-      x[i][0] + x_inc[i][0] + dt() * v[i][0],
-      x[i][1] + x_inc[i][1] + dt() * v[i][1],
-    ];
+    x.push(init_x[i]);
+    v.push(init_v[i]);
   }
-};
+  for (let t = 0; t < steps; t++) {
+    // collide all pairs of balls
+    const x_inc: (Vec<Real> | number[])[] = [];
+    const impulse: (Vec<Real> | number[])[] = [];
+    for (let i = 0; i < ballCount; i++) {
+      x_inc.push([0, 0]);
+      impulse.push([0, 0]);
+    }
+    for (let i = 0; i < ballCount; i++) {
+      for (let j = 0; j < ballCount; j++) {
+        if (i === j) continue;
+        const { x_inc_contrib, imp } = collidePair(x[i], x[j], v[i], v[j]);
+        x_inc[i] = vadd2(x_inc[i], x_inc_contrib);
+        impulse[i] = vadd2(impulse[i], imp);
+      }
+    }
+
+    // update ball positions
+    for (let i = 0; i < ballCount; i++) {
+      v[i] = vadd2(v[i], impulse[i]);
+      x[i] = vadd2(vadd2(x[i], x_inc[i]), vmul(dt(), v[i]));
+    }
+    xs.push([...x]);
+  }
+  return xs;
+});
 
 const init = () => {
   // initialize cue ball position
-  x[0] = [0.1, 0.5];
+  const init_x = [];
+  init_x[0] = [0.1, 0.5];
   v[0] = [0.3 * Math.cos(alpha), 0.3 * Math.sin(alpha)];
   // initialize other balls
   let count = 0;
   for (let i = 0; i < layers; i++) {
     for (let j = 0; j < i + 1; j++) {
       count += 1;
-      x[count] = [
+      init_x[count] = [
         i * 2 * radius + 0.5,
         j * 2 * radius + 0.5 - i * radius * 0.7,
       ];
       v[count] = [0, 0];
     }
   }
+  setX(init_x);
 };
 
 const computeLoss = fn([Vec2, Vec2], Real, (current, goal) =>
@@ -179,6 +183,9 @@ const computeLoss = fn([Vec2, Vec2], Real, (current, goal) =>
 
 const optimize = () => {};
 
+// const stepsCompiled = await compile(allSteps);
+const stepsCompiled = interp(allSteps);
+
 export default function Table() {
   const [w, h] = [1024, 1024];
   const pixelRadius = Math.round(radius * 1024) + 1;
@@ -186,8 +193,14 @@ export default function Table() {
   const [playID, setPlayID] = createSignal(0);
   const [playing, setPlaying] = createSignal(false);
   const fps = 60;
+  const [currentT, setCurrentT] = createSignal(0);
 
   init();
+  const xs = stepsCompiled(x, v);
+
+  createEffect(() => {
+    setX([...(xs[currentT()] as any)]);
+  });
 
   return (
     <>
@@ -208,7 +221,7 @@ export default function Table() {
           fill="#000"
         ></circle>
       </svg>
-      <button
+      {/* <button
         onclick={() => {
           if (playing()) {
             clearInterval(playID());
@@ -222,17 +235,18 @@ export default function Table() {
       >
         {playing() ? `Pause` : `Play`}
       </button>
-      <button onclick={() => init()}>Reset</button>
+      <button onclick={() => init()}>Reset</button> */}
       <div>
-        Time step:
+        T:
         <input
           type="range"
-          min={0.001}
-          max={0.05}
-          step={0.0001}
-          value={dt()}
+          min={0}
+          max={steps - 1}
+          step={1}
+          value={currentT()}
           // disabled={playing()}
-          onchange={(v) => setdt(v.target.valueAsNumber)}
+          // onchange={(v) => setdt(v.target.valueAsNumber)}
+          oninput={(v) => setCurrentT(v.target.valueAsNumber)}
           name="Time step"
         />
       </div>
