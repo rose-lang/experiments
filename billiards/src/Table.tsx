@@ -120,9 +120,7 @@ const collidePair = fn(
 
 const Rack = Vec(ballCount, Vec2);
 
-// main simulation step
-const allSteps = fn([Rack, Rack], Vec(steps, Rack), (init_x, init_v) => {
-  const xs = [];
+const step = fn([Rack, Rack], { x: Rack, v: Rack }, (init_x, init_v) => {
   // copy over the initial values
   const x: Vec<Real>[] = [];
   const v: Vec<Real>[] = [];
@@ -130,29 +128,41 @@ const allSteps = fn([Rack, Rack], Vec(steps, Rack), (init_x, init_v) => {
     x.push(init_x[i]);
     v.push(init_v[i]);
   }
-  for (let t = 0; t < steps; t++) {
-    // collide all pairs of balls
-    const x_inc: (Vec<Real> | number[])[] = [];
-    const impulse: (Vec<Real> | number[])[] = [];
-    for (let i = 0; i < ballCount; i++) {
-      x_inc.push([0, 0]);
-      impulse.push([0, 0]);
+  // collide all pairs of balls
+  const x_inc: (Vec<Real> | number[])[] = [];
+  const impulse: (Vec<Real> | number[])[] = [];
+  for (let i = 0; i < ballCount; i++) {
+    x_inc.push([0, 0]);
+    impulse.push([0, 0]);
+  }
+  for (let i = 0; i < ballCount; i++) {
+    for (let j = 0; j < ballCount; j++) {
+      if (i === j) continue;
+      const { x_inc_contrib, imp } = collidePair(x[i], x[j], v[i], v[j]);
+      x_inc[i] = vadd2(x_inc[i], x_inc_contrib);
+      impulse[i] = vadd2(impulse[i], imp);
     }
-    for (let i = 0; i < ballCount; i++) {
-      for (let j = 0; j < ballCount; j++) {
-        if (i === j) continue;
-        const { x_inc_contrib, imp } = collidePair(x[i], x[j], v[i], v[j]);
-        x_inc[i] = vadd2(x_inc[i], x_inc_contrib);
-        impulse[i] = vadd2(impulse[i], imp);
-      }
-    }
+  }
 
-    // update ball positions
-    for (let i = 0; i < ballCount; i++) {
-      v[i] = vadd2(v[i], impulse[i]);
-      x[i] = vadd2(vadd2(x[i], x_inc[i]), vmul(dt(), v[i]));
-    }
-    xs.push([...x]);
+  // update ball positions
+  for (let i = 0; i < ballCount; i++) {
+    v[i] = vadd2(v[i], impulse[i]);
+    x[i] = vadd2(vadd2(x[i], x_inc[i]), vmul(dt(), v[i]));
+  }
+
+  return { x, v };
+});
+
+// main simulation step
+const allSteps = fn([Rack, Rack], Vec(steps, Rack), (init_x, init_v) => {
+  const xs = [];
+  let x = init_x;
+  let v = init_v;
+  for (let t = 0; t < steps; t++) {
+    const { x: newX, v: newV } = step(x, v);
+    x = newX;
+    v = newV;
+    xs.push(x);
   }
   return xs;
 });
@@ -183,8 +193,8 @@ const computeLoss = fn([Vec2, Vec2], Real, (current, goal) =>
 
 const optimize = () => {};
 
-// const stepsCompiled = await compile(allSteps);
-const stepsCompiled = interp(allSteps);
+const stepsCompiled = await compile(allSteps);
+// const stepsCompiled = interp(allSteps);
 
 export default function Table() {
   const [w, h] = [1024, 1024];
