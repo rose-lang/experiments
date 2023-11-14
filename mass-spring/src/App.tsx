@@ -1,14 +1,12 @@
 import "./App.css";
-import Table from "./Table";
+import Scene from "./Scene";
 
 function App() {
   return (
     <>
-      <h1>Billiards</h1>
-      <p>Differentiable pool physics with 🌹</p>
-      <div class="table">
-        <Table />
-      </div>
+      <h1>Mass Spring</h1>
+      <p>Differentiable mass-spring simulator with 🌹</p>
+      <Scene />
     </>
   );
 }
