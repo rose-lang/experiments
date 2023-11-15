@@ -18,8 +18,9 @@ import { createEffect, createSignal } from "solid-js";
 import { createStore } from "solid-js/store";
 import { Vec2, exp, norm, sin, tanh, vadd2, vmul, vsub2 } from "./lib";
 import { Robot, robots } from "./robots";
+import { w1, w2 } from "./weights";
 // constants
-const iter = 20;
+const iter = 0;
 
 const steps = Math.floor(2048 / 3);
 const elasticity = 0.0;
@@ -243,7 +244,8 @@ const init_weights_biases = () => {
     }
     bias2.push(0);
   }
-  return { weights1, weights2, bias1, bias2 };
+  // return { weights1, weights2, bias1, bias2 };
+  return { weights1: w1, weights2: w2, bias1, bias2 };
 };
 
 const compute_loss = fn([Objects], Real, (x) => {
@@ -323,6 +325,7 @@ const gradCompiled = await compile(gradF);
 const optimize = () => {
   const { initV, initX } = init(robot);
   let { weights1, weights2, bias1, bias2 } = init_weights_biases();
+
   for (let i = 0; i < iter; i++) {
     let total_norm_sqr = 0;
     const { loss, bias1Grad, bias2Grad, weights1Grad, weights2Grad } =
@@ -340,10 +343,10 @@ const optimize = () => {
       }
       total_norm_sqr += bias2Grad[i] ** 2;
     }
-    console.log(total_norm_sqr);
 
     const gradient_clip = 0.2;
     const scale = gradient_clip / (total_norm_sqr ** 0.5 + 1e-6);
+    console.log(scale);
     for (let i = 0; i < n_hidden; i++) {
       for (let j = 0; j < n_input_states; j++) {
         weights1[i][j] -= scale * weights1Grad[i][j];
