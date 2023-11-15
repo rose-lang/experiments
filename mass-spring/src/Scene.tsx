@@ -86,7 +86,7 @@ const apply_spring_force = fn([Objects, Act], Objects, (x, act) => {
       div(mul(dt * spring.stiffness, sub(length, target_length)), length),
       dist
     );
-    v_inc[a] = vadd2(v_inc[a], vmul(-1, impulse));
+    v_inc[a] = vsub2(v_inc[a], impulse);
     v_inc[b] = vadd2(v_inc[b], impulse);
   }
   return v_inc;
@@ -104,13 +104,13 @@ const advance_no_toi = fn(
       const old_x = x[i];
       const depth = sub(old_x[1], ground_height);
       // friction projection
-      // const new_v = select(
-      //   and(lt(depth, 0), lt(old_v[1], 0)),
-      //   Vec2,
-      //   old_v,
-      //   [0, 0]
-      // );
-      const new_v = old_v;
+      const new_v = select(
+        and(lt(depth, 0), lt(old_v[1], 0)),
+        Vec2,
+        [0, 0],
+        old_v
+      );
+      // const new_v = old_v;
       const new_x = vadd2(old_x, vmul(dt, new_v));
       next_v.push(new_v);
       next_x.push(new_x);
@@ -187,6 +187,7 @@ const nn2 = fn([Weights2, Hidden, Bias2], Act, (weights2, hidden, bias2) => {
   return act;
 });
 
+// implicitly, the timestep is 0, 1, 2...
 const step = fn(
   [Real, Objects, Objects, Weights1, Weights2, Bias1, Bias2],
   { x: Objects, v: Objects, act: Act },
@@ -203,6 +204,7 @@ const step = fn(
     // go through neural network to compute actuations
     const hidden = nn1(t, x, v, bias1, center, weights1);
     const act = nn2(weights2, hidden, bias2);
+    // return v_inc for the next timestep
     const v_inc = apply_spring_force(x, act);
     const { next_x, next_v } = advance_no_toi(x, v, v_inc);
     return { x: next_x, v: next_v, act };
@@ -253,6 +255,7 @@ const allSteps = fn(
     const acts = [];
     let x = init_x;
     let v = init_v;
+    // different from original: the timestamp starts at 0
     for (let t = 0; t < steps; t++) {
       const {
         x: newX,
@@ -373,14 +376,14 @@ export default () => {
           fill={"red"}
           r={3}
         ></circle>
-        {/* <line
+        <line
           x1={toX(0)}
           y1={toY(ground_height)}
           x2={toX(1)}
           y2={toY(ground_height)}
           stroke={"#000000"}
           stroke-width={3}
-        ></line> */}
+        ></line>
         <RobotViz robot={robot} x={x} act={act} w={w} h={h} />
       </svg>
       <div>
