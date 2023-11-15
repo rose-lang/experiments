@@ -20,9 +20,9 @@ import { Vec2, exp, norm, sin, tanh, vadd2, vmul, vsub2 } from "./lib";
 import { Robot, robots } from "./robots";
 import { w1, w2 } from "./weights";
 // constants
-const iter = 0;
+const iter = 20;
 
-const steps = Math.floor(2048 / 3);
+const steps = Math.floor(2048 / 3) * 2;
 const elasticity = 0.0;
 const ground_height = 0.1;
 const gravity = -4.8;
@@ -32,7 +32,6 @@ const spring_omega = 10;
 const damping = 15;
 const dt = 0.004;
 
-const x: number[][] = [];
 const head_id = 0;
 const goal = [0.9, 0.2];
 const robot = robots[1]();
@@ -136,7 +135,7 @@ const nn1 = fn(
           actuation,
           mul(
             weights1[i][j],
-            sin(mul(t, spring_omega * dt + (2 * Math.PI * j) / n_sin_waves))
+            sin(add(mul(t, spring_omega * dt), (2 * Math.PI * j) / n_sin_waves))
           )
         );
       }
