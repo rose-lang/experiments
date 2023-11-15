@@ -11,6 +11,8 @@ import {
   select,
   lt,
   opaque,
+  Dual,
+  neg,
 } from "rose";
 
 // vector helpers
@@ -56,4 +58,32 @@ export const normalize = fn([Vec2, Real], Vec2, (v, eps) =>
 export const print = opaque([Real], Real, (x) => {
   console.log(x);
   return x;
+});
+
+export const exp = opaque([Real], Real, Math.exp);
+exp.jvp = fn([Dual], Dual, ({ re: x, du: dx }) => {
+  const y = exp(x);
+  const dy = mul(dx, y);
+  return { re: y, du: dy };
+});
+
+export const tanh = opaque([Real], Real, Math.tanh);
+tanh.jvp = fn([Dual], Dual, ({ re: x, du: dx }) => {
+  const y = tanh(x);
+  const dy = mul(dx, sub(1, mul(y, y)));
+  return { re: y, du: dy };
+});
+
+export const cos = opaque([Real], Real, Math.cos);
+export const sin = opaque([Real], Real, Math.sin);
+
+cos.jvp = fn([Dual], Dual, ({ re: x, du: dx }) => {
+  const y = cos(x);
+  const dy = mul(dx, neg(sin(x)));
+  return { re: y, du: dy };
+});
+sin.jvp = fn([Dual], Dual, ({ re: x, du: dx }) => {
+  const y = sin(x);
+  const dy = mul(dx, cos(x));
+  return { re: y, du: dy };
 });
