@@ -18,7 +18,6 @@ import { createEffect, createSignal } from "solid-js";
 import { createStore } from "solid-js/store";
 import { Vec2, exp, norm, sin, tanh, vadd2, vmul, vsub2 } from "./lib";
 import { Robot, robots } from "./robots";
-import { w1, w2 } from "./weights";
 // constants
 const iter = 100;
 
@@ -275,8 +274,7 @@ const init_weights_biases = () => {
     }
     bias2.push(0);
   }
-  // return { weights1, weights2, bias1, bias2 };
-  return { weights1: w1, weights2: w2, bias1, bias2 };
+  return { weights1, weights2, bias1, bias2 };
 };
 
 const compute_loss = fn([Objects], Real, (x) => {
