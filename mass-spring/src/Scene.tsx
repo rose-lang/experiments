@@ -461,21 +461,7 @@ export default () => {
   // signals
   const [currentT, setCurrentT] = createSignal(0);
 
-  const { weights1, weights2, bias1, bias2 } = optimize();
-
   const { initV, initX } = init(robot);
-  const { acts, xs, loss } = stepsCompiled(
-    initX,
-    initV,
-    // init_weights_biases().weights1,
-    // init_weights_biases().weights2,
-    // init_weights_biases().bias1,
-    // init_weights_biases().bias2
-    weights1,
-    weights2,
-    bias1,
-    bias2
-  );
 
   const [x, setX] = createStore<number[][]>(initX);
   const [act, setAct] = createStore<number[]>([]);
@@ -484,6 +470,16 @@ export default () => {
     setX([...(xs[currentT()] as any)]);
     setAct([...(acts[currentT()] as any)]);
   });
+
+  const { weights1, weights2, bias1, bias2 } = optimize();
+  const { acts, xs, loss } = stepsCompiled(
+    initX,
+    initV,
+    weights1,
+    weights2,
+    bias1,
+    bias2
+  );
 
   return (
     <>

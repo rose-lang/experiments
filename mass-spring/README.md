@@ -1,10 +1,9 @@
-# Billiards 🎱
+# Mass-Spring 🎱
 
-Differetiable pool physics using 🌹.
+Differetiable mass-spring simulation using 🌹.
 
 ![Alt text](assets/image.png)
 ## Usage
-
 ```bash
 $ npm install # or pnpm install or yarn install
 ```
