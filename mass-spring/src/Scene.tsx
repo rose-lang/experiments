@@ -8,14 +8,18 @@ import {
   fn,
   lt,
   mul,
+  neg,
   select,
   sub,
+  vjp,
 } from "rose";
 import { createEffect, createSignal } from "solid-js";
 import { createStore } from "solid-js/store";
 import { Vec2, exp, norm, sin, tanh, vadd2, vmul, vsub2 } from "./lib";
 import { Robot, robots } from "./robots";
 // constants
+const iter = 20;
+
 const steps = Math.floor(2048 / 3);
 const elasticity = 0.0;
 const ground_height = 0.1;
@@ -244,11 +248,16 @@ const init_weights_biases = () => {
   return { weights1, weights2, bias1, bias2 };
 };
 
+const compute_loss = fn([Objects], Real, (x) => {
+  return neg(x[head_id][0]);
+});
+
 const allSteps = fn(
   [Objects, Objects, Weights1, Weights2, Bias1, Bias2],
   {
     xs: Vec(steps, Objects),
     acts: Vec(steps, Act),
+    loss: Real,
   },
   (init_x, init_v, weights1, weights2, bias1, bias2) => {
     const xs = [];
@@ -267,9 +276,91 @@ const allSteps = fn(
       xs.push(x);
       acts.push(act);
     }
-    return { xs, acts };
+    return { xs, acts, loss: compute_loss(x) };
   }
 );
+
+const F = fn(
+  [
+    {
+      init_x: Objects,
+      init_v: Objects,
+      weights1: Weights1,
+      weights2: Weights2,
+      bias1: Bias1,
+      bias2: Bias2,
+    },
+  ],
+  Real,
+  ({ init_x, init_v, weights1, weights2, bias1, bias2 }) => {
+    const { loss } = allSteps(init_x, init_v, weights1, weights2, bias1, bias2);
+    return loss;
+  }
+);
+
+const gradF = fn(
+  [Objects, Objects, Weights1, Weights2, Bias1, Bias2],
+  {
+    bias1Grad: Bias1,
+    bias2Grad: Bias2,
+    weights1Grad: Weights1,
+    weights2Grad: Weights2,
+    loss: Real,
+  },
+  (init_x, init_v, weights1, weights2, bias1, bias2) => {
+    const f = vjp(F)({ init_x, init_v, weights1, weights2, bias1, bias2 });
+    const {
+      bias1: bias1Grad,
+      bias2: bias2Grad,
+      weights1: weights1Grad,
+      weights2: weights2Grad,
+    } = f.grad(1);
+    return { bias1Grad, bias2Grad, weights1Grad, weights2Grad, loss: f.ret };
+  }
+);
+
+const stepsCompiled = await compile(allSteps);
+const gradCompiled = await compile(gradF);
+
+const optimize = () => {
+  const { initV, initX } = init(robot);
+  let { weights1, weights2, bias1, bias2 } = init_weights_biases();
+  for (let i = 0; i < iter; i++) {
+    let total_norm_sqr = 0;
+    const { loss, bias1Grad, bias2Grad, weights1Grad, weights2Grad } =
+      gradCompiled(initX, initV, weights1, weights2, bias1, bias2);
+    console.log(`Iter=${i} Loss=${loss}`);
+    for (let i = 0; i < n_hidden; i++) {
+      for (let j = 0; j < n_input_states; j++) {
+        total_norm_sqr += weights1Grad[i][j] ** 2;
+      }
+      total_norm_sqr += bias1Grad[i] ** 2;
+    }
+    for (let i = 0; i < n_springs; i++) {
+      for (let j = 0; j < n_hidden; j++) {
+        total_norm_sqr += weights2Grad[i][j] ** 2;
+      }
+      total_norm_sqr += bias2Grad[i] ** 2;
+    }
+    console.log(total_norm_sqr);
+
+    const gradient_clip = 0.2;
+    const scale = gradient_clip / (total_norm_sqr ** 0.5 + 1e-6);
+    for (let i = 0; i < n_hidden; i++) {
+      for (let j = 0; j < n_input_states; j++) {
+        weights1[i][j] -= scale * weights1Grad[i][j];
+      }
+      bias1[i] -= scale * bias1Grad[i];
+    }
+    for (let i = 0; i < n_springs; i++) {
+      for (let j = 0; j < n_hidden; j++) {
+        weights2[i][j] -= scale * weights2Grad[i][j];
+      }
+      bias2[i] -= scale * bias2Grad[i];
+    }
+  }
+  return { weights1, weights2, bias1, bias2 };
+};
 
 const RobotViz = ({
   robot,
@@ -333,8 +424,6 @@ const init = (robot: Robot): { initX: number[][]; initV: number[][] } => {
   return { initX, initV };
 };
 
-const stepsCompiled = await compile(allSteps);
-
 export default () => {
   const [w, h] = [512, 512];
   const toX = (x: number) => x * w;
@@ -342,10 +431,11 @@ export default () => {
 
   // signals
   const [currentT, setCurrentT] = createSignal(0);
-  const { initV, initX } = init(robot);
-  const { weights1, weights2, bias1, bias2 } = init_weights_biases();
 
-  const { acts, xs } = stepsCompiled(
+  const { weights1, weights2, bias1, bias2 } = optimize();
+
+  const { initV, initX } = init(robot);
+  const { acts, xs, loss } = stepsCompiled(
     initX,
     initV,
     weights1,
@@ -397,6 +487,9 @@ export default () => {
           oninput={(v) => setCurrentT(v.target.valueAsNumber)}
           name="Time step"
         />
+      </div>
+      <div>
+        Loss: <span>{loss.toFixed(3)}</span>
       </div>
     </>
   );
