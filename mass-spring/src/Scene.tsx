@@ -31,7 +31,7 @@ const head_id = 0;
 const goal = [0.9, 0.2];
 const robot = robots[1]();
 const n_objects: number = robot.objects.length;
-const n_springs: number = robot.objects.length;
+const n_springs: number = robot.springs.length;
 
 // NN constants
 const learning_rate = 25;
@@ -58,36 +58,39 @@ const compute_center = fn([Objects], Vec2, (objects) => {
   return vmul(div(1, n_objects), sum);
 });
 
-const apply_spring_force = fn(
-  [Objects, Vec(n_springs, Real)],
-  Objects,
-  (x, act) => {
-    const v_inc: (Vec<Real> | number[])[] = [];
-    for (let i = 0; i < n_springs; i++) {
-      v_inc.push([0, 0]);
-    }
-    for (let i = 0; i < n_springs; i++) {
-      const spring = robot.springs[i];
-      const a = spring.object1;
-      const b = spring.object2;
-      const pos_a = x[a];
-      const pos_b = x[b];
-      const dist = vsub2(pos_a, pos_b);
-      const length = add(norm(dist), 1e-4);
-      const target_length = mul(
-        spring.length,
-        add(1, mul(act[i], spring.actuation))
-      );
-      const impulse = vmul(
-        div(mul(dt * spring.stiffness, sub(length, target_length)), length),
-        dist
-      );
-      v_inc[a] = vadd2(v_inc[a], vmul(-1, impulse));
-      v_inc[b] = vadd2(v_inc[b], impulse);
-    }
-    return v_inc;
+const Hidden = Vec(n_hidden, Real);
+const Weights1 = Vec(n_hidden, Vec(n_input_states, Real));
+const Weights2 = Vec(n_springs, Vec(n_hidden, Real));
+const Act = Vec(n_springs, Real);
+const Bias1 = Hidden;
+const Bias2 = Act;
+
+const apply_spring_force = fn([Objects, Act], Objects, (x, act) => {
+  const v_inc: (Vec<Real> | number[])[] = [];
+  for (let i = 0; i < n_objects; i++) {
+    v_inc.push([0, 0]);
   }
-);
+  for (let i = 0; i < n_springs; i++) {
+    const spring = robot.springs[i];
+    const a = spring.object1;
+    const b = spring.object2;
+    const pos_a = x[a];
+    const pos_b = x[b];
+    const dist = vsub2(pos_a, pos_b);
+    const length = add(norm(dist), 1e-4);
+    const target_length = mul(
+      spring.length,
+      add(1, mul(act[i], spring.actuation))
+    );
+    const impulse = vmul(
+      div(mul(dt * spring.stiffness, sub(length, target_length)), length),
+      dist
+    );
+    v_inc[a] = vadd2(v_inc[a], vmul(-1, impulse));
+    v_inc[b] = vadd2(v_inc[b], impulse);
+  }
+  return v_inc;
+});
 
 const advance_no_toi = fn(
   [Objects, Objects, Objects],
@@ -101,12 +104,13 @@ const advance_no_toi = fn(
       const old_x = x[i];
       const depth = sub(old_x[1], ground_height);
       // friction projection
-      const new_v = select(
-        and(lt(depth, 0), lt(old_v[1], 0)),
-        Vec2,
-        old_v,
-        [0, 0]
-      );
+      // const new_v = select(
+      //   and(lt(depth, 0), lt(old_v[1], 0)),
+      //   Vec2,
+      //   old_v,
+      //   [0, 0]
+      // );
+      const new_v = old_v;
       const new_x = vadd2(old_x, vmul(dt, new_v));
       next_v.push(new_v);
       next_x.push(new_x);
@@ -114,13 +118,6 @@ const advance_no_toi = fn(
     return { next_v, next_x };
   }
 );
-
-const Hidden = Vec(n_hidden, Real);
-const Weights1 = Vec(n_hidden, Vec(n_input_states, Real));
-const Weights2 = Vec(n_springs, Vec(n_hidden, Real));
-const Act = Vec(n_springs, Real);
-const Bias1 = Hidden;
-const Bias2 = Act;
 
 const nn1 = fn(
   [Real, Objects, Objects, Bias1, Vec2, Weights1],
@@ -289,8 +286,8 @@ const RobotViz = ({
     <>
       {springs.map((spring, i) => {
         let r = 2;
-        let a = act[i] * 0.5;
         let c = "#000000";
+        let a = act[i] * 0.5;
         if (spring.actuation == 0) {
           a = 0;
           c = "#222222";
@@ -301,6 +298,7 @@ const RobotViz = ({
         const { object1, object2 } = spring;
         const [x1, y1] = x[object1];
         const [x2, y2] = x[object2];
+
         return (
           <line
             x1={x1 * w}
@@ -375,14 +373,14 @@ export default () => {
           fill={"red"}
           r={3}
         ></circle>
-        <line
+        {/* <line
           x1={toX(0)}
           y1={toY(ground_height)}
           x2={toX(1)}
           y2={toY(ground_height)}
           stroke={"#000000"}
           stroke-width={3}
-        ></line>
+        ></line> */}
         <RobotViz robot={robot} x={x} act={act} w={w} h={h} />
       </svg>
       <div>
