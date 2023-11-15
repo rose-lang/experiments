@@ -20,7 +20,7 @@ import { Vec2, exp, norm, sin, tanh, vadd2, vmul, vsub2 } from "./lib";
 import { Robot, robots } from "./robots";
 import { w1, w2 } from "./weights";
 // constants
-const iter = 20;
+const iter = 100;
 
 const steps = Math.floor(2048 / 3) * 2;
 const elasticity = 0.0;
@@ -124,6 +124,37 @@ const advance_no_toi = fn(
   }
 );
 
+const advance_toi = fn(
+  [Objects, Objects, Objects],
+  { next_x: Objects, next_v: Objects },
+  (x, v, v_inc) => {
+    const next_x: Vec<Real>[] = [];
+    const next_v: Vec<Real>[] = [];
+    for (let i = 0; i < n_objects; i++) {
+      const s = exp(-dt * damping);
+      const old_v = vadd2(vadd2(vmul(s, v[i]), [0, dt * gravity]), v_inc[i]);
+      const old_x = x[i];
+      const new_x = vadd2(old_x, vmul(dt, old_v));
+      const cond = and(lt(new_x[1], ground_height), lt(old_v[1], -1e-4));
+      const toi = select(
+        cond,
+        Real,
+        div(neg(sub(old_x[1], ground_height)), old_v[1]),
+        0
+      );
+      const new_v = select(cond, Vec2, [0, 0], old_v);
+      const new_new_x = vadd2(
+        vadd2(old_x, vmul(toi, old_v)),
+        vmul(sub(dt, toi), new_v)
+      );
+
+      next_v.push(new_v);
+      next_x.push(new_new_x);
+    }
+    return { next_v, next_x };
+  }
+);
+
 const nn1 = fn(
   [Real, Objects, Objects, Bias1, Vec2, Weights1],
   Hidden,
@@ -208,7 +239,8 @@ const step = fn(
     const act = nn2(weights2, hidden, bias2);
     // return v_inc for the next timestep
     const v_inc = apply_spring_force(x, act);
-    const { next_x, next_v } = advance_no_toi(x, v, v_inc);
+    // const { next_x, next_v } = advance_no_toi(x, v, v_inc);
+    const { next_x, next_v } = advance_toi(x, v, v_inc);
     return { x: next_x, v: next_v, act };
   }
 );
@@ -345,7 +377,6 @@ const optimize = () => {
 
     const gradient_clip = 0.2;
     const scale = gradient_clip / (total_norm_sqr ** 0.5 + 1e-6);
-    console.log(scale);
     for (let i = 0; i < n_hidden; i++) {
       for (let j = 0; j < n_input_states; j++) {
         weights1[i][j] -= scale * weights1Grad[i][j];
@@ -438,6 +469,10 @@ export default () => {
   const { acts, xs, loss } = stepsCompiled(
     initX,
     initV,
+    // init_weights_biases().weights1,
+    // init_weights_biases().weights2,
+    // init_weights_biases().bias1,
+    // init_weights_biases().bias2
     weights1,
     weights2,
     bias1,
