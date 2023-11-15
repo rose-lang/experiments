@@ -11,6 +11,7 @@ import {
   neg,
   select,
   sub,
+  vec,
   vjp,
 } from "rose";
 import { createEffect, createSignal } from "solid-js";
@@ -126,9 +127,8 @@ const advance_no_toi = fn(
 const nn1 = fn(
   [Real, Objects, Objects, Bias1, Vec2, Weights1],
   Hidden,
-  (t, x, v, bias1, center, weights1) => {
-    const hidden = [];
-    for (let i = 0; i < n_hidden; i++) {
+  (t, x, v, bias1, center, weights1) =>
+    vec(n_hidden, Real, (i) => {
       let actuation: Real = 0;
       for (let j = 0; j < n_sin_waves; j++) {
         actuation = add(
@@ -171,10 +171,8 @@ const nn1 = fn(
       );
       actuation = add(actuation, bias1[i]);
       actuation = tanh(actuation);
-      hidden.push(actuation);
-    }
-    return hidden;
-  }
+      return actuation;
+    })
 );
 
 const nn2 = fn([Weights2, Hidden, Bias2], Act, (weights2, hidden, bias2) => {
