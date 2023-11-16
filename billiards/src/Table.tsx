@@ -34,8 +34,6 @@ const steps = 1024;
 
 const layers = 4;
 const ballCount = Math.round(1 + ((1 + layers) * layers) / 2);
-const targetBall = ballCount - 1;
-const goal = [0.9, 0.75];
 const radius = 0.03;
 const elasticity = 0.8;
 
@@ -161,16 +159,20 @@ const computeLoss = fn([Vec2, Vec2], Real, (current, goal) =>
   add(pow(sub(current[0], goal[0]), 2), pow(sub(current[1], goal[1]), 2))
 );
 
-const F = fn([{ x: Rack, v: Rack }], Real, ({ x, v }) => {
-  const xs = allSteps(x, v);
-  return computeLoss(xs[steps - 1][targetBall], goal);
-});
+const F = fn(
+  [{ x: Rack, v: Rack, goal: Vec2, targetBall: ballCount }],
+  Real,
+  ({ x, v, goal, targetBall }) => {
+    const xs = allSteps(x, v);
+    return computeLoss(xs[steps - 1][targetBall], goal);
+  }
+);
 
 const gradF = fn(
-  [{ x: Rack, v: Rack }],
+  [{ x: Rack, v: Rack, goal: Vec2, targetBall: ballCount }],
   { gradX: Vec2, gradV: Vec2, loss: Real },
-  ({ x, v }) => {
-    const f = vjp(F)({ x, v });
+  ({ x, v, goal, targetBall }) => {
+    const f = vjp(F)({ x, v, goal, targetBall });
     const g = f.grad(1);
     return {
       loss: f.ret,
@@ -179,8 +181,7 @@ const gradF = fn(
     };
   }
 );
-
-const optimize = () => {
+const optimize = (goal: number[], targetBall: number) => {
   let optX = [0.1, 0.5];
   let optV = [0.3, 0.0];
 
@@ -190,7 +191,12 @@ const optimize = () => {
     // plug in the optimized initial values
     initX[0] = [...optX];
     initV[0] = [...optV];
-    const { gradX, gradV, loss } = gradCompiled({ x: initX, v: initV });
+    const { gradX, gradV, loss } = gradCompiled({
+      x: initX,
+      v: initV,
+      goal,
+      targetBall,
+    });
     // update the optimized values by descenting the gradient
     optX[0] = optX[0] - learningRate * gradX[0];
     optX[1] = optX[1] - learningRate * gradX[1];
@@ -213,37 +219,94 @@ export default function Table() {
   const pixelRadius = Math.round(radius * 1024) + 1;
   const cloth = "#2bb4e5";
   const [currentT, setCurrentT] = createSignal(0);
+  const [optimizing, setOptimizing] = createSignal(false);
 
   const { initV, initX } = init();
 
   const [x, setX] = createStore<number[][]>(initX);
+  const [xs, setXs] = createStore<number[][][]>(
+    stepsCompiled(initX, initV) as any
+  );
 
   createEffect(() => {
     setX([...(xs[currentT()] as any)]);
   });
 
-  const { x: optX, v: optV } = optimize();
-  initX[0] = optX as any;
-  initV[0] = optV as any;
+  const optimizePos = () => {
+    setOptimizing(true);
+    setTimeout(() => {
+      const { x: optX, v: optV } = optimize(goal, targetBall());
+      initX[0] = optX as any;
+      initV[0] = optV as any;
+      const xs = stepsCompiled(initX, initV);
+      setXs(xs as any);
+      setOptimizing(false);
+    }, 1);
+  };
 
-  const xs = stepsCompiled(initX, initV);
+  const [dragging, setDragging] = createSignal(false);
+  const [goal, setGoal] = createStore([0.9, 0.75]);
+  const [targetBall, setTargetBall] = createSignal(ballCount - 1);
+  const getPosition = (
+    { clientX, clientY }: { clientX: number; clientY: number },
+    svg: SVGSVGElement
+  ) => {
+    const CTM = svg.getScreenCTM();
+    if (CTM !== null) {
+      return { x: (clientX - CTM.e) / CTM.a, y: (clientY - CTM.f) / CTM.d };
+    }
+    return { x: 0, y: 0 };
+  };
+
+  const clamp = (x: number, min: number, max: number): number =>
+    Math.min(Math.max(x, min), max);
+
+  const onMouseDown = () => {
+    const radius = pixelRadius / 2;
+    const minX = radius;
+    const maxX = w - radius;
+    const minY = radius;
+    const maxY = h - radius;
+
+    setDragging(true);
+    const onMouseMove = (e: MouseEvent) => {
+      const { clientX, clientY } = e;
+      const { x: newX, y: newY } = getPosition({ clientX, clientY }, svg!);
+      const constrainedX = clamp(newX, minX, maxX);
+      const constrainedY = clamp(newY, minY, maxY);
+      const newGoal = [constrainedX / 1024, (h - constrainedY) / 1024];
+      setGoal(newGoal);
+    };
+    const onMouseUp = () => {
+      setDragging(false);
+      document.removeEventListener("mouseup", onMouseUp);
+      document.removeEventListener("mousemove", onMouseMove);
+    };
+    document.addEventListener("mouseup", onMouseUp);
+    document.addEventListener("mousemove", onMouseMove);
+  };
+
+  let svg: SVGSVGElement | undefined;
 
   return (
     <>
-      <svg width="100%" height="100%" viewBox={`0 0 ${w} ${h}`}>
+      <svg width="100%" height="100%" viewBox={`0 0 ${w} ${h}`} ref={svg}>
         <rect width={w} height={h} fill={cloth}></rect>
         {x.map(([x, y], i) => (
           <circle
             cx={x * 1024}
             cy={h - y * 1024}
             r={pixelRadius}
-            fill={i === 0 ? "#fff" : i === targetBall ? "#3344cc" : "#f20530"}
+            fill={i === 0 ? "#fff" : i === targetBall() ? "#3344cc" : "#f20530"}
+            onclick={() => setTargetBall(i)}
           ></circle>
         ))}
         <circle
           cx={goal[0] * 1024}
           cy={h - goal[1] * 1024}
           r={pixelRadius / 2}
+          onMouseDown={onMouseDown}
+          style={{ cursor: "move" }}
           fill="#000"
         ></circle>
       </svg>
@@ -259,6 +322,9 @@ export default function Table() {
           name="Time step"
         />
       </div>
+      <button onclick={() => optimizePos()} disabled={optimizing()}>
+        {!optimizing() ? "Optimize" : "Optimizing"}
+      </button>
     </>
   );
 }
