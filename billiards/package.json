@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "rose": "^0.4.4",
+    "rose": "^0.4.5",
     "solid-js": "^1.7.8",
     "vite-plugin-top-level-await": "^1.3.1"
   },
