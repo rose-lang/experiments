@@ -19,7 +19,7 @@ import { createStore } from "solid-js/store";
 import { Vec2, exp, norm, sin, tanh, vadd2, vmul, vsub2 } from "./lib";
 import { Robot, robots } from "./robots";
 // constants
-const iter = 100;
+const iter = 20;
 
 const steps = Math.floor(2048 / 3) * 2;
 const elasticity = 0.0;
@@ -462,24 +462,40 @@ export default () => {
   const [currentT, setCurrentT] = createSignal(0);
 
   const { initV, initX } = init(robot);
+  const [optimizing, setOptimizing] = createSignal(false);
 
   const [x, setX] = createStore<number[][]>(initX);
   const [act, setAct] = createStore<number[]>([]);
+  const { weights1, weights2, bias1, bias2 } = init_weights_biases();
+  const {
+    acts: initActs,
+    xs: initXs,
+    loss: l,
+  } = stepsCompiled(initX, initV, weights1, weights2, bias1, bias2);
+  const [xs, setXs] = createStore<number[][][]>(initXs as any);
+  const [acts, setActs] = createStore<number[][]>(initActs as any);
+  const [loss, setLoss] = createSignal(l);
 
   createEffect(() => {
     setX([...(xs[currentT()] as any)]);
     setAct([...(acts[currentT()] as any)]);
   });
 
-  const { weights1, weights2, bias1, bias2 } = optimize();
-  const { acts, xs, loss } = stepsCompiled(
-    initX,
-    initV,
-    weights1,
-    weights2,
-    bias1,
-    bias2
-  );
+  const optimizeNow = () => {
+    setOptimizing(true);
+    setTimeout(() => {
+      const { weights1, weights2, bias1, bias2 } = optimize();
+      const {
+        acts,
+        xs,
+        loss: newLoss,
+      } = stepsCompiled(initX, initV, weights1, weights2, bias1, bias2);
+      setXs([...(xs as any)]);
+      setActs([...(acts as any)]);
+      setLoss(newLoss);
+      setOptimizing(false);
+    }, 10);
+  };
 
   return (
     <>
@@ -518,8 +534,11 @@ export default () => {
         />
       </div>
       <div>
-        Loss: <span>{loss.toFixed(3)}</span>
+        Loss: <span>{loss().toFixed(3)}</span>
       </div>
+      <button onclick={() => optimizeNow()} disabled={optimizing()}>
+        {!optimizing() ? "Train" : "Training"}
+      </button>
     </>
   );
 };
