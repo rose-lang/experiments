@@ -19,7 +19,7 @@ import { createStore } from "solid-js/store";
 import { Vec2, exp, norm, sin, tanh, vadd2, vmul, vsub2 } from "./lib";
 import { Robot, robots } from "./robots";
 // constants
-const iter = 20;
+const iter = 100;
 
 const steps = Math.floor(2048 / 3) * 2;
 const elasticity = 0.0;
@@ -484,7 +484,11 @@ export default () => {
   const optimizeNow = () => {
     setOptimizing(true);
     setTimeout(() => {
+      // record timing info
+      const start = performance.now();
       const { weights1, weights2, bias1, bias2 } = optimize();
+      const end = performance.now();
+      console.log(`Optimization took ${end - start}ms`);
       const {
         acts,
         xs,
@@ -533,9 +537,9 @@ export default () => {
           name="Time step"
         />
       </div>
-      <div>
+      {/* <div>
         Loss: <span>{loss().toFixed(3)}</span>
-      </div>
+      </div> */}
       <button onclick={() => optimizeNow()} disabled={optimizing()}>
         {!optimizing() ? "Train" : "Training"}
       </button>

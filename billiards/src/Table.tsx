@@ -235,7 +235,11 @@ export default function Table() {
   const optimizePos = () => {
     setOptimizing(true);
     setTimeout(() => {
+      // record timing
+      const start = performance.now();
       const { x: optX, v: optV } = optimize(goal, targetBall());
+      const end = performance.now();
+      console.log(`optimization took ${end - start}ms`);
       initX[0] = optX as any;
       initV[0] = optV as any;
       const xs = stepsCompiled(initX, initV);
