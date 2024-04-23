@@ -1,4 +1,5 @@
 import { ballCount, init, optimize, stepsCompiled } from "./optimizer";
+import * as process from "process";
 
 // set up scene
 const goal = [0.9, 0.75];
@@ -18,3 +19,4 @@ console.log(
   `final target ball position=${xs[(xs as any).length - 1][targetBall]}`
 );
 console.log(`goal=${goal}`);
+process.exit();
