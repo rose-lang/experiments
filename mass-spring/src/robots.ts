@@ -147,6 +147,5 @@ function robotD() {
   add_mesh_square(robot, 4, 1, points, point_id, 0.15);
   return robot;
 }
-console.log(robotD());
 
 export const robots = [robotA, robotD];
